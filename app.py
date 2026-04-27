@@ -46,7 +46,7 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff"}
 
 @app.route("/")
 def index():
-    return send_from_directory("static", "index.html")
+    return send_from_directory("static", "static/index.html")
 
 
 @app.route("/api/process", methods=["POST"])
