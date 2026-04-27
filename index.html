@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WasteVision — YOLO Waste Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0d0f0e;
+    --surface: #141714;
+    --border: #232823;
+    --accent: #b8f54a;
+    --accent2: #4FC3F7;
+    --text: #e8ede8;
+    --muted: #5a6b5a;
+    --danger: #ff6b6b;
+    --card-bg: #181b17;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Grid noise background ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(184,245,74,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(184,245,74,.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  main { position: relative; z-index: 1; }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.5rem 3rem;
+    border-bottom: 1px solid var(--border);
+    background: rgba(13,15,14,.9);
+    backdrop-filter: blur(8px);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo {
+    display: flex; align-items: center; gap: .75rem;
+  }
+  .logo-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50% { opacity:.5; transform:scale(.8); }
+  }
+  .logo-text { font-size: 1.25rem; font-weight: 800; letter-spacing: -.02em; }
+  .logo-text span { color: var(--accent); }
+  .model-badge {
+    font-family: 'Space Mono', monospace;
+    font-size: .7rem;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: .25rem .6rem;
+    border-radius: 4px;
+  }
+
+  /* ── Content ── */
+  .container { max-width: 1200px; margin: 0 auto; padding: 3rem 2rem; }
+
+  /* ── Input section ── */
+  .input-section {
+    display: flex; gap: 1rem; align-items: stretch;
+    margin-bottom: 3rem;
+  }
+  .folder-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: .9rem;
+    padding: .9rem 1.2rem;
+    border-radius: 8px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .folder-input:focus { border-color: var(--accent); }
+  .folder-input::placeholder { color: var(--muted); }
+
+  .run-btn {
+    padding: .9rem 2.2rem;
+    background: var(--accent);
+    color: #0d0f0e;
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: .95rem;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all .2s;
+    white-space: nowrap;
+    letter-spacing: .02em;
+  }
+  .run-btn:hover { background: #cbff5e; transform: translateY(-1px); }
+  .run-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  /* ── Status / error ── */
+  .status {
+    display: none;
+    font-family: 'Space Mono', monospace;
+    font-size: .8rem;
+    color: var(--muted);
+    margin-bottom: 2rem;
+    animation: fadeIn .3s ease;
+  }
+  .status.error { color: var(--danger); display: block; }
+  .status.loading { display: block; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+
+  /* ── Results ── */
+  #results { display: none; animation: fadeIn .4s ease; }
+
+  /* ── Summary cards ── */
+  .summary-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 3rem;
+  }
+  .summary-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    position: relative;
+    overflow: hidden;
+    transition: border-color .2s;
+  }
+  .summary-card:hover { border-color: var(--accent); }
+  .summary-card::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(184,245,74,.06) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .card-label {
+    font-size: .7rem;
+    color: var(--muted);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    margin-bottom: .5rem;
+    font-family: 'Space Mono', monospace;
+  }
+  .card-value {
+    font-size: 2.4rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--accent);
+  }
+  .card-unit {
+    font-size: .8rem;
+    color: var(--muted);
+    margin-top: .3rem;
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* ── Section titles ── */
+  .section-title {
+    font-size: .65rem;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    margin-bottom: 1rem;
+    display: flex; align-items: center; gap: .75rem;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Detection breakdown ── */
+  .detection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 3rem;
+  }
+  .detection-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.4rem;
+    display: flex; align-items: center; gap: 1rem;
+  }
+  .det-icon { font-size: 2.2rem; }
+  .det-info { flex: 1; }
+  .det-name {
+    font-weight: 600; font-size: .95rem;
+    text-transform: capitalize;
+    margin-bottom: .2rem;
+  }
+  .det-count {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .det-weight {
+    font-size: .72rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    margin-top: .2rem;
+  }
+
+  /* ── Category section ── */
+  .category-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.2rem;
+    margin-bottom: 3rem;
+  }
+  .category-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .category-card.placeholder { opacity: .45; }
+  .cat-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .cat-title-row { display: flex; align-items: center; gap: .6rem; }
+  .cat-icon { font-size: 1.5rem; }
+  .cat-name { font-weight: 700; font-size: 1rem; }
+  .cat-weight-badge {
+    font-family: 'Space Mono', monospace;
+    font-size: .72rem;
+    padding: .25rem .65rem;
+    border-radius: 20px;
+    border: 1px solid;
+  }
+  .cat-items { display: flex; flex-direction: column; gap: .5rem; }
+  .cat-item {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: .85rem;
+    padding: .4rem .6rem;
+    background: rgba(255,255,255,.03);
+    border-radius: 6px;
+  }
+  .cat-item-left { display: flex; flex-direction: column; gap: .1rem; }
+  .cat-item-name { font-weight: 600; text-transform: capitalize; }
+  .cat-item-sub { font-size: .7rem; color: var(--muted); }
+  .cat-item-count {
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    font-size: .9rem;
+  }
+  .cat-empty {
+    font-size: .8rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    padding: .4rem 0;
+  }
+
+  /* ── Weight bar ── */
+  .weight-bar-section { margin-bottom: 3rem; }
+  .weight-bar-wrap {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+  }
+  .weight-bar-labels {
+    display: flex; justify-content: space-between;
+    font-family: 'Space Mono', monospace;
+    font-size: .72rem;
+    color: var(--muted);
+    margin-bottom: .75rem;
+  }
+  .weight-bar-track {
+    height: 12px;
+    background: rgba(255,255,255,.05);
+    border-radius: 100px;
+    overflow: hidden;
+    display: flex;
+  }
+  .weight-bar-seg {
+    height: 100%;
+    border-radius: 100px;
+    transition: width .8s cubic-bezier(.4,0,.2,1);
+  }
+  .weight-legend {
+    display: flex; gap: 1.5rem; flex-wrap: wrap;
+    margin-top: 1rem;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: .4rem;
+    font-size: .78rem; font-family: 'Space Mono', monospace;
+    color: var(--muted);
+  }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* ── Per-image table ── */
+  .image-table-wrap {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead { background: rgba(255,255,255,.04); }
+  th {
+    text-align: left;
+    padding: .8rem 1.2rem;
+    font-size: .68rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: .75rem 1.2rem;
+    font-size: .85rem;
+    border-bottom: 1px solid rgba(255,255,255,.04);
+    font-family: 'Space Mono', monospace;
+    color: var(--text);
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(184,245,74,.03); }
+  .td-file { color: var(--muted); font-size: .78rem; }
+  .count-chip {
+    display: inline-block;
+    padding: .15rem .5rem;
+    border-radius: 4px;
+    font-size: .75rem;
+    margin-right: .25rem;
+  }
+  .zero { color: var(--muted); }
+
+  /* ── Spinner ── */
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    margin-right: .5rem;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="logo">
+      <div class="logo-dot"></div>
+      <div class="logo-text">Waste<span>Vision</span></div>
+    </div>
+    <div class="model-badge">YOLOv6s · best.pt</div>
+  </header>
+
+  <div class="container">
+
+    <div class="input-section">
+      <input
+        class="folder-input"
+        id="folderInput"
+        type="text"
+        placeholder="/path/to/images/folder"
+        spellcheck="false"
+      />
+      <button class="run-btn" id="runBtn" onclick="runAnalysis()">▶ Analyze</button>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <!-- Results -->
+    <div id="results">
+
+      <!-- Summary -->
+      <div class="section-title">Overview</div>
+      <div class="summary-row" id="summaryRow"></div>
+
+      <!-- Detection breakdown -->
+      <div class="section-title">Detected Items</div>
+      <div class="detection-grid" id="detectionGrid"></div>
+
+      <!-- Weight bar -->
+      <div class="section-title">Weight Distribution</div>
+      <div class="weight-bar-section">
+        <div class="weight-bar-wrap">
+          <div class="weight-bar-labels">
+            <span>0 kg</span>
+            <span id="weightBarTotal">– kg</span>
+          </div>
+          <div class="weight-bar-track" id="weightBarTrack"></div>
+          <div class="weight-legend" id="weightLegend"></div>
+        </div>
+      </div>
+
+      <!-- Waste categories -->
+      <div class="section-title">Waste Categories</div>
+      <div class="category-grid" id="categoryGrid"></div>
+
+      <!-- Per-image table -->
+      <div class="section-title">Per-Image Breakdown</div>
+      <div class="image-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Bottles</th>
+              <th>Cartons</th>
+              <th>Total detections</th>
+            </tr>
+          </thead>
+          <tbody id="imageTableBody"></tbody>
+        </table>
+      </div>
+
+    </div><!-- /results -->
+  </div>
+</main>
+
+<script>
+const ICONS = { bottle: '🍶', carton: '📦' };
+const COLORS = { bottle: '#4FC3F7', carton: '#A5D6A7' };
+const WEIGHT_LABELS = { bottle: '~25g each', carton: '~180g each' };
+
+async function runAnalysis() {
+  const folder = document.getElementById('folderInput').value.trim();
+  if (!folder) return;
+
+  const btn = document.getElementById('runBtn');
+  const status = document.getElementById('status');
+  const results = document.getElementById('results');
+
+  btn.disabled = true;
+  results.style.display = 'none';
+  status.className = 'status loading';
+  status.innerHTML = '<span class="spinner"></span> Processing images with YOLO — this may take a moment…';
+
+  try {
+    const res = await fetch('/api/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      status.className = 'status error';
+      status.textContent = '✗ ' + (data.error || 'Unknown error');
+      return;
+    }
+
+    status.className = 'status';
+    renderResults(data);
+
+  } catch (err) {
+    status.className = 'status error';
+    status.textContent = '✗ Could not reach the server. Is Flask running?';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderResults(data) {
+  // ── Summary cards ──────────────────────────────────────────────────────
+  const summaryCards = [
+    { label: 'Images Processed', value: data.total_images, unit: 'files' },
+    { label: 'Total Detections', value: data.total_detections, unit: 'objects' },
+    { label: 'Est. Total Weight', value: data.total_weight_kg.toFixed(2), unit: 'kilograms' },
+    { label: 'Waste Classes', value: Object.keys(data.counts).length, unit: 'detected types' },
+  ];
+  document.getElementById('summaryRow').innerHTML = summaryCards.map(c => `
+    <div class="summary-card">
+      <div class="card-label">${c.label}</div>
+      <div class="card-value">${c.value}</div>
+      <div class="card-unit">${c.unit}</div>
+    </div>
+  `).join('');
+
+  // ── Detection cards ────────────────────────────────────────────────────
+  document.getElementById('detectionGrid').innerHTML = Object.entries(data.counts).map(([cls, count]) => {
+    const weightKg = ((count * (cls === 'bottle' ? 25 : 180)) / 1000).toFixed(2);
+    return `
+    <div class="detection-card">
+      <div class="det-icon">${ICONS[cls] || '🗑️'}</div>
+      <div class="det-info">
+        <div class="det-name">${cls}</div>
+        <div class="det-count" style="color:${COLORS[cls] || '#fff'}">${count}</div>
+        <div class="det-weight">${WEIGHT_LABELS[cls] || ''} · ~${weightKg} kg total</div>
+      </div>
+    </div>`;
+  }).join('') || '<p style="color:var(--muted);font-family:Space Mono,monospace;font-size:.85rem">No detections.</p>';
+
+  // ── Weight bar ─────────────────────────────────────────────────────────
+  const totalW = data.total_weight_kg;
+  document.getElementById('weightBarTotal').textContent = totalW.toFixed(2) + ' kg';
+  const track = document.getElementById('weightBarTrack');
+  const legend = document.getElementById('weightLegend');
+  track.innerHTML = '';
+  legend.innerHTML = '';
+  Object.entries(data.counts).forEach(([cls, count]) => {
+    const w = count * (cls === 'bottle' ? 25 : 180) / 1000;
+    const pct = totalW > 0 ? (w / totalW * 100).toFixed(1) : 0;
+    const color = COLORS[cls] || '#CE93D8';
+    const seg = document.createElement('div');
+    seg.className = 'weight-bar-seg';
+    seg.style.cssText = `width:${pct}%;background:${color};`;
+    track.appendChild(seg);
+    legend.innerHTML += `
+      <div class="legend-item">
+        <div class="legend-dot" style="background:${color}"></div>
+        ${cls} — ${pct}% (${w.toFixed(2)} kg)
+      </div>`;
+  });
+
+  // ── Category cards ─────────────────────────────────────────────────────
+  const catGrid = document.getElementById('categoryGrid');
+  catGrid.innerHTML = data.categories.map(cat => {
+    const color = cat.color || '#888';
+    const isEmpty = cat.items.length === 0;
+    return `
+    <div class="category-card ${cat.placeholder ? 'placeholder' : ''}">
+      <div class="cat-header">
+        <div class="cat-title-row">
+          <span class="cat-icon">${cat.icon}</span>
+          <span class="cat-name">${cat.category}</span>
+        </div>
+        <span class="cat-weight-badge" style="color:${color};border-color:${color}44;background:${color}11">
+          ${(cat.weight_g / 1000).toFixed(2)} kg
+        </span>
+      </div>
+      <div class="cat-items">
+        ${isEmpty
+          ? `<div class="cat-empty">— no detections</div>`
+          : cat.items.map(item => `
+            <div class="cat-item">
+              <div class="cat-item-left">
+                <span class="cat-item-name">${item.icon} ${item.type}</span>
+                <span class="cat-item-sub">${item.subcategory}</span>
+              </div>
+              <span class="cat-item-count" style="color:${COLORS[item.type]||'#fff'}">${item.count}</span>
+            </div>`).join('')
+        }
+      </div>
+    </div>`;
+  }).join('');
+
+  // ── Per-image table ────────────────────────────────────────────────────
+  const tbody = document.getElementById('imageTableBody');
+  tbody.innerHTML = data.per_image.map(img => {
+    const bottles = img.detections.bottle || 0;
+    const cartons = img.detections.carton || 0;
+    const total = Object.values(img.detections).reduce((a, b) => a + b, 0);
+    return `<tr>
+      <td class="td-file">${img.file}</td>
+      <td>${bottles > 0 ? `<span class="count-chip" style="background:#4FC3F720;color:#4FC3F7">${bottles}</span>` : '<span class="zero">—</span>'}</td>
+      <td>${cartons > 0 ? `<span class="count-chip" style="background:#A5D6A720;color:#A5D6A7">${cartons}</span>` : '<span class="zero">—</span>'}</td>
+      <td style="font-weight:700">${total || '<span class="zero">0</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('results').style.display = 'block';
+}
+
+// Enter key support
+document.getElementById('folderInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') runAnalysis();
+});
+</script>
+</body>
+</html>
