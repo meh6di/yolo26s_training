@@ -4,13 +4,16 @@ from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
-app = Flask(__name__, static_folder="static")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+app = Flask(__name__)
 CORS(app)
 
 # ── Weight estimates (grams per item) ──────────────────────────────────────────
 WEIGHT_G = {
-    "bottle": 25,    # typical 500 ml PET bottle
-    "carton": 180,   # average beverage / food carton
+    "bottle": 25,
+    "carton": 180,
 }
 
 # ── Waste category mapping ─────────────────────────────────────────────────────
@@ -29,14 +32,13 @@ CATEGORIES = {
     },
 }
 
-# ── Lazily load the YOLO model ─────────────────────────────────────────────────
 _model = None
 
 def get_model():
     global _model
     if _model is None:
         from ultralytics import YOLO
-        model_path = os.environ.get("MODEL_PATH", "best.onnx")
+        model_path = os.environ.get("MODEL_PATH", os.path.join(BASE_DIR, "best.onnx"))
         _model = YOLO(model_path)
     return _model
 
@@ -46,7 +48,12 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff"}
 
 @app.route("/")
 def index():
-    return send_from_directory("static", "static/index.html")
+    return send_from_directory(STATIC_DIR, "index.html")
+
+
+@app.route("/<path:filename>")
+def static_files(filename):
+    return send_from_directory(STATIC_DIR, filename)
 
 
 @app.route("/api/process", methods=["POST"])
@@ -66,8 +73,8 @@ def process_folder():
         return jsonify({"error": "No images found in the specified folder."}), 400
 
     model = get_model()
-    counts = {}          # class_name -> count
-    per_image = []       # per-image breakdown
+    counts = {}
+    per_image = []
 
     for img_path in sorted(images):
         results = model(str(img_path), verbose=False)
@@ -86,7 +93,6 @@ def process_folder():
             "detections": image_counts,
         })
 
-    # ── Build category summary ─────────────────────────────────────────────────
     category_totals = {}
     total_weight_g = 0
 
@@ -117,24 +123,9 @@ def process_folder():
         })
         category_totals[cat_key]["weight_g"] += weight_g
 
-    # Add placeholder categories for context (0 detections)
     placeholder_categories = [
-        {
-            "category": "Industrial Waste",
-            "icon": "🏭",
-            "color": "#FFAB91",
-            "items": [],
-            "weight_g": 0,
-            "placeholder": True,
-        },
-        {
-            "category": "Hazardous Waste",
-            "icon": "☣️",
-            "color": "#EF9A9A",
-            "items": [],
-            "weight_g": 0,
-            "placeholder": True,
-        },
+        {"category": "Industrial Waste", "icon": "🏭", "color": "#FFAB91", "items": [], "weight_g": 0, "placeholder": True},
+        {"category": "Hazardous Waste", "icon": "☣️", "color": "#EF9A9A", "items": [], "weight_g": 0, "placeholder": True},
     ]
 
     all_categories = list(category_totals.values()) + placeholder_categories
