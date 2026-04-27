@@ -36,7 +36,7 @@ def get_model():
     global _model
     if _model is None:
         from ultralytics import YOLO
-        model_path = os.environ.get("MODEL_PATH", "best.pt")
+        model_path = os.environ.get("MODEL_PATH", "best.onnx")
         _model = YOLO(model_path)
     return _model
 
