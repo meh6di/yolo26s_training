@@ -1,4 +1,4 @@
-# WasteVision — YOLO Waste Analyzer
+# YOLO Waste Analyzer
 
 A web app that uses your `best.pt` YOLOv6s model to analyze images of waste, providing counts, category breakdowns, and estimated weight.
 
@@ -8,11 +8,7 @@ A web app that uses your `best.pt` YOLOv6s model to analyze images of waste, pro
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Place your best.pt in the same folder as app.py
-#    (or set MODEL_PATH env variable to its location)
-export MODEL_PATH=/path/to/best.pt   # optional, default = ./best.pt
-
-# 3. Run the server
+# 2. Run the server
 python app.py
 ```
 
